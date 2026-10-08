@@ -1,12 +1,25 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Roster Line Recommender</title>
+  <meta name="description" content="Enter the days you need off and see which roster lines give you the best fit. Free, quick, and works on your phone." />
+  <meta name="theme-color" content="#0e8c6b" />
+
+  <!-- Link previews (WhatsApp, Messenger, iMessage, Facebook) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Roster Line Recommender" />
+  <meta property="og:description" content="Enter the days you need off and see which roster lines give you the best fit." />
+  <meta property="og:url" content="https://resusone.github.io/rosterone.github.io/" />
+  <meta property="og:image" content="https://resusone.github.io/rosterone.github.io/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
   
   <!-- Favicon -->
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
@@ -164,6 +177,16 @@
           <i class="fas fa-trophy text-amber-500"></i>
           <span id="resultsHeading">Recommended Lines</span>
         </h2>
+        <p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+          <i class="fas fa-exclamation-triangle mr-1"></i>
+          Please always confirm prior to relying on this website and our recommendations, as errors may be present.
+        </p>
+        <div id="staleBanner" class="hidden text-sm text-slate-700 bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 mb-4 flex flex-wrap items-center gap-3" role="status">
+          <span>Your settings have changed since these results were generated.</span>
+          <button onclick="generateRecommendations()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition">
+            Update results
+          </button>
+        </div>
         <div id="resultsContainer" class="space-y-6"></div>
       </div>
     </div>
@@ -171,7 +194,8 @@
     <!-- Footer note -->
     <div class="text-center text-slate-500 text-xs mt-8 space-y-1">
       <p>Standard: 4 on / 5 off • Aero (Roadie): 9 lines rotate weekly.</p>
-      <p>Your dates and settings are saved in this browser only. <button onclick="resetSavedState()" class="underline hover:text-emerald-700">Reset saved settings</button></p>
+      <p>Please always confirm prior to relying on this website and our recommendations, as errors may be present.</p>
+      <p>Your settings are saved in this browser only. Dates are sent to the server to calculate results and are not stored. Anonymous page-view stats are collected with no cookies or personal data. <button onclick="resetSavedState()" class="underline hover:text-emerald-700">Reset saved settings</button></p>
       <p>
         <button id="revealEmailBtn" onclick="revealFeedbackEmail()" class="underline hover:text-emerald-700">
           <i class="fas fa-envelope mr-1"></i>Got feedback? Show contact email
@@ -378,9 +402,27 @@
     // ========== STATE ==========
     let requiredDates = new Set(); // ISO strings YYYY-MM-DD
     let dateStatusTimeout = null;
+    let pendingSingle = false; // user picked a single date but hasn't tapped Add
+    let pendingRangeStart = false; // user picked both ends of a range but hasn't tapped Add
+    let pendingRangeEnd = false;   // (the range start is pre-filled, so both must be user-picked)
+
+    // ========== STALE RESULTS ==========
+    // Once results are showing, any settings change dims them and offers a
+    // one-tap update, so nobody prints or exports a roster built from old settings.
+    function markResultsStale() {
+      const section = document.getElementById('resultsSection');
+      if (section.classList.contains('hidden')) return;
+      document.getElementById('staleBanner').classList.remove('hidden');
+      document.getElementById('resultsContainer').classList.add('opacity-40', 'pointer-events-none');
+    }
+    function clearResultsStale() {
+      document.getElementById('staleBanner').classList.add('hidden');
+      document.getElementById('resultsContainer').classList.remove('opacity-40', 'pointer-events-none');
+    }
 
     // ========== PERSISTENCE ==========
     function saveState() {
+      markResultsStale();
       try {
         const allowedLines = [...document.querySelectorAll('#lineCheckboxes input[type=checkbox]:checked')].map(cb => cb.value);
         const state = {
@@ -433,7 +475,7 @@
       document.getElementById('aeroHint').classList.toggle('hidden', !isAero);
       document.getElementById('rosterTypeHint').textContent = isAero
         ? 'Rotates through all 9 lines, one week each — full rotation takes 9 weeks, then repeats'
-        : 'Rotates through all 9 lines, one week each — full rotation takes 9 weeks, then repeats';
+        : 'Rotation period: 9 days — 4 on, 5 off';
       document.getElementById('linesLabel').textContent = isAero
         ? 'Starting lines you are willing to accept'
         : 'Lines you are willing to accept';
@@ -469,6 +511,12 @@
       // Required Days Off bounds in sync.
       document.getElementById('startDate').addEventListener('change', () => syncRequiredDateBounds({ jumpDefault: true }));
       document.getElementById('endDate').addEventListener('change', () => syncRequiredDateBounds({ jumpDefault: false }));
+
+      // Remember when someone picks a date but hasn't tapped Add yet, so
+      // Generate can include it instead of saying no dates were added.
+      document.getElementById('singleDate').addEventListener('change', () => { pendingSingle = true; });
+      document.getElementById('rangeStart').addEventListener('change', () => { pendingRangeStart = true; });
+      document.getElementById('rangeEnd').addEventListener('change', () => { pendingRangeEnd = true; });
 
       // Restore saved state, if any
       const saved = loadState();
@@ -582,6 +630,7 @@
         return;
       }
       requiredDates.add(input.value);
+      pendingSingle = false;
       const added = formatDisplay(parseDate(input.value));
       input.value = '';
       renderSelectedDates();
@@ -617,6 +666,8 @@
       }
       document.getElementById('rangeStart').value = '';
       document.getElementById('rangeEnd').value = '';
+      pendingRangeStart = false;
+      pendingRangeEnd = false;
       renderSelectedDates();
       if (alreadyPresent > 0) {
         showDateStatus(
@@ -678,6 +729,13 @@
 
     // ========== GENERATE RECOMMENDATIONS (calls backend) ==========
     async function generateRecommendations() {
+      // Include any date or range the user picked but didn't tap Add for.
+      if (pendingSingle && document.getElementById('singleDate').value) addSingleDate();
+      if (pendingRangeStart && pendingRangeEnd && document.getElementById('rangeStart').value && document.getElementById('rangeEnd').value) addRange();
+      pendingSingle = false;
+      pendingRangeStart = false;
+      pendingRangeEnd = false;
+
       const startStr = document.getElementById('startDate').value;
       const endStr = document.getElementById('endDate').value;
       if (!startStr || !endStr) {
@@ -736,6 +794,7 @@
       const section = document.getElementById('resultsSection');
       const container = document.getElementById('resultsContainer');
       container.innerHTML = '';
+      clearResultsStale();
       section.classList.remove('hidden');
       const isAero = rosterType === 'aero';
       document.getElementById('resultsHeading').textContent = isAero ? 'Recommended Starting Lines' : 'Recommended Lines';
@@ -1009,6 +1068,15 @@
     }
 
     async function printRoster(btn, startLine, startStr, endStr, rosterType, shiftKey) {
+      // Open the window immediately, while we still have the user's tap.
+      // Safari (and most phones) block pop-ups opened after waiting on a network call.
+      const win = window.open('', '_blank');
+      if (!win) {
+        alert('Please allow pop-ups for this page to print or export a roster.');
+        return;
+      }
+      win.document.write('<p style="font-family:Arial,sans-serif;padding:24px;color:#555">Preparing roster…</p>');
+
       const labelEl = btn ? btn.querySelector('.print-btn-label') : null;
       const originalLabel = labelEl ? labelEl.textContent : null;
       if (btn) btn.disabled = true;
@@ -1020,6 +1088,7 @@
           rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey
         });
       } catch (e) {
+        try { win.close(); } catch (_) {}
         alert(e.message || 'Could not prepare the roster for printing.');
         if (btn) btn.disabled = false;
         if (labelEl) labelEl.textContent = originalLabel;
@@ -1047,14 +1116,10 @@
         .map(m => buildMonthCalendarHtml(m.monthDate, m.days, requiredDates))
         .join('');
 
-      const win = window.open('', '_blank');
-      if (!win) {
-        alert('Please allow pop-ups for this page to print or export a roster.');
-        return;
-      }
       const legendLetters = isAero
         ? 'D = Day, A = Afternoon (/OC = on call), N = Night, T = Training, O = Off.'
         : 'D = Day, A = Afternoon, N = Night, O = Off.';
+      win.document.open();
       win.document.write(`<!DOCTYPE html>
         <html>
         <head>
@@ -1093,6 +1158,7 @@
           ${calendarHtml}
           <div class="legend">Bold green = requested off &amp; rostered off. Bold red = requested off but still rostered on. ${legendLetters}</div>
           ${isAero ? buildActiveLineLegend(data.days) : ''}
+          <div class="legend">Please always confirm prior to relying on this website and our recommendations, as errors may be present.</div>
         </body>
         </html>`);
       win.document.close();
