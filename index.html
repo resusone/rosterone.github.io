@@ -945,7 +945,7 @@
       let data;
       try {
         data = await callApi('/roster', {
-          rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey
+          rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey, purpose: 'view'
         });
       } catch (e) {
         alert(e.message || 'Could not load the full roster.');
@@ -1085,7 +1085,7 @@
       let data;
       try {
         data = await callApi('/roster', {
-          rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey
+          rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey, purpose: 'print'
         });
       } catch (e) {
         try { win.close(); } catch (_) {}
@@ -1257,7 +1257,7 @@
       let data;
       try {
         data = await callApi('/roster', {
-          rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey
+          rosterType, startLine, startDate: startStr, endDate: endStr, shiftPattern: shiftKey, purpose: 'ics'
         });
       } catch (e) {
         alert(e.message || 'Could not prepare the calendar file.');
